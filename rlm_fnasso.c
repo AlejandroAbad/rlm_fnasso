@@ -1,7 +1,5 @@
 /*
- * rlm_fnasso.c        module to add dynamic principals to a KDC after EAP-MSK negotiation
- *
- * Version:	$Id: 42132624367187730c30565a43f1305eb880bbae $
+ * rlm_fnasso.c        module to dynamicaly add principals to a KDC after EAP-MSK negotiation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -13,16 +11,10 @@
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *   GNU General Public License for more details.
  *
- *   You should have received a copy of the GNU General Public License
- *   along with this program; if not, write to the Free Software
- *   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
- *
  * Copyright 2014  Alejandro Primitivo Abad <alejandroprimitivo.abad@um.es>
  */
 
 #include	<freeradius-devel/ident.h>
-
-RCSID("$Id: 42132624367187730c30565a43f1305eb880bbae $")
 #include	<freeradius-devel/radiusd.h>
 #include	<freeradius-devel/modules.h>
 
@@ -35,13 +27,13 @@ RCSID("$Id: 42132624367187730c30565a43f1305eb880bbae $")
 
 
 /*
- * Value of the attribute field of a Radius' EAP-MSK AVP.
+ * Values of the attribute fields that carries the MSK.
  */
-#define FNASSO_MS_MPPE_RECV_VENDOR 20381713
-#define FNASSO_MS_MPPE_SEND_VENDOR 20381712
+#define FNASSO_MS_MPPE_RECV 20381713
+#define FNASSO_MS_MPPE_SEND 20381712
 
 /*
- * Value of the vendor field of a Radius' EAP-MSK AVP.
+ * Value of the vendor for fields with the MSK.
  */
 #define FNASSO_MS_MPPE_VENDOR 311
 
@@ -108,11 +100,11 @@ static int rlm_fnasso_detach(void *instance)
 
 /**
  * Post-proxy call.
+ * When a proxyed request returns to the server, this function is called.
  */
 static int rml_fnasso_postproxy(void *instance, REQUEST *request)
 {
     F_BEGIN();
-
 
     rlm_fnasso_t *data;
     VALUE_PAIR *vp, *ms_mppe_recv, *ms_mppe_send;
@@ -121,7 +113,7 @@ static int rml_fnasso_postproxy(void *instance, REQUEST *request)
     fnasso_ctx *ctx;
     fnasso_error error;
 
-
+    // Initialize a fnasso context using configuration data
     data = (rlm_fnasso_t *) instance;
 
     error = fnasso_context_init(&ctx);
@@ -136,9 +128,8 @@ static int rml_fnasso_postproxy(void *instance, REQUEST *request)
     error = fnasso_kadmin_set_admin(ctx, data->kdm_username, data->kdm_password);
     if (error) goto error_exit_point;
 
-    //
-    // Try to find the AVP with the EAP-MSK
-    //
+    // Try to find the AVP with the EAP-MSK in the post-proxyed reply
+    // in order to find values of MS_MPPR_RECV and MS_MPPR_SEND.
     msk_len = 0;
     ms_mppe_send = NULL;
     ms_mppe_recv = NULL;
@@ -147,11 +138,11 @@ static int rml_fnasso_postproxy(void *instance, REQUEST *request)
     {
 	if (vp->vendor == FNASSO_MS_MPPE_VENDOR)
 	{
-	    if (vp->attribute == FNASSO_MS_MPPE_RECV_VENDOR)
+	    if (vp->attribute == FNASSO_MS_MPPE_RECV)
 	    {
 		ms_mppe_recv = vp;
 	    }
-	    else if (vp->attribute == FNASSO_MS_MPPE_SEND_VENDOR)
+	    else if (vp->attribute == FNASSO_MS_MPPE_SEND)
 	    {
 		ms_mppe_send = vp;
 	    }
@@ -159,12 +150,14 @@ static int rml_fnasso_postproxy(void *instance, REQUEST *request)
 	vp = vp->next;
     }
 
+
     if (!ms_mppe_recv || !ms_mppe_send)
     {
 	EVENT("MSK not found. Nothing to do here.");
 	goto exit_point;
     }
-
+    
+    // Construct the MSK from the MS_MPPE_* chunks gathered
     msk_len = ms_mppe_recv->length + ms_mppe_send->length;
     msk = (unsigned char*) rad_malloc(msk_len);
     memcpy(msk, ms_mppe_send->data.strvalue, ms_mppe_send->length);
@@ -182,28 +175,27 @@ static int rml_fnasso_postproxy(void *instance, REQUEST *request)
     EVENT("Kerberos principal suscessfully created.");
     goto exit_point;
 
-
 error_exit_point:
-    exit_point :
-	    fnasso_context_free(&ctx);
+exit_point :
+    fnasso_context_free(&ctx);
     RETURN(RLM_MODULE_OK);
 }
 
 
 module_t rlm_fnasso = {
-		       RLM_MODULE_INIT,
-		       "fnasso",
-		       RLM_TYPE_THREAD_UNSAFE, /* type: not thread safe */
-		       rlm_fnasso_instantiate, /* instantiation */
-		       rlm_fnasso_detach, /* detach */
+    RLM_MODULE_INIT,
+    "fnasso",
+    RLM_TYPE_THREAD_SAFE, // type: thread safe. No shared memory is used
+    rlm_fnasso_instantiate, // instantiation
+    rlm_fnasso_detach, // detach
     {
-     NULL, /* authenticate */
-     NULL, /* authorize */
-     NULL, /* pre-accounting */
-     NULL, /* accounting */
-     NULL, /* checksimul */
-     NULL, /* pre-proxy */
-     rml_fnasso_postproxy, /* post-proxy */
-     NULL /* post-auth */
+        NULL, // authenticate
+        NULL, // authorize
+        NULL, // pre-accounting
+        NULL, // accounting
+        NULL, // checksimul
+        NULL, // pre-proxy
+        rml_fnasso_postproxy, // post-proxy
+        NULL // post-auth
     },
 };
