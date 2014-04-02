@@ -11,7 +11,7 @@
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *   GNU General Public License for more details.
  *
- * Copyright 2014  Alejandro Primitivo Abad <alejandroprimitivo.abad@um.es>
+ * Copyright 2014  Alejandro Abad Carrascosa <hankyago@gmail.com>
  */
 
 #include	<freeradius-devel/ident.h>
