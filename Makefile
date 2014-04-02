@@ -1,0 +1,13 @@
+#
+# $Id: e2945e5761a6b7631bc9f29a8ee710173b4c6b9c $
+#
+
+TARGET     = rlm_fnasso
+SRCS       = rlm_fnasso.c debug.c
+HEADERS    = debug.h
+RLM_LIBS   = -lfnasso
+RLM_CFLAGS = -I/usr/include/
+
+include ../rules.mak
+
+$(LT_OBJS): $(HEADERS)
